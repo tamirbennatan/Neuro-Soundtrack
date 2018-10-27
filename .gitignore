@@ -1,0 +1,5 @@
+*.mp3
+*.csv
+data/*
+*.npy
+*.pkl
