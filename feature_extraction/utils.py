@@ -8,14 +8,19 @@ from pydub import AudioSegment
 import audiosegment
 from glob import glob
 import cv2
-
+import pdb
 import copy
+
+from keras.layers import MaxPooling2D
+from keras.models import Model,Input
 
 # generator that yields music files, instead of 
 def read_songs(dir, recursive = True, extensions = ["m4a", "mp3"]):
-    extensions_str = str(tuple("." + s for s in extensions))
     # load paths to music files recursively
-    paths = glob(dir + "/**/*%s"%extensions_str, recursive = True)
+    paths = []
+    for ext in extensions:
+    	paths += glob(dir + "/**/**.%s"%ext,recursive= recursive)
+    print("Found: %d Files"%len(paths))
     # return a generator for reading the audio files
     return (audiosegment.from_file(f) for f in paths)
 
@@ -45,11 +50,13 @@ def normalize_spectogram(Sxx):
     Sxx = np.log10(Sxx + 1e-9)
     smin = Sxx.min()
     srange = Sxx.max() - smin
+    if srange == 0 :
+    	return None
     Sxx = (Sxx - smin)/srange
     return Sxx
 
 def black_overlay(arr,black = 255, depth = 2):
-	heigh,width = arr.shape
+	height,width = arr.shape
 	tmp = np.repeat(black,height*width*depth).reshape(height,width,depth)
 	tmp[:,:,0] = arr
 	return tmp
@@ -63,12 +70,14 @@ def edge_detect(arr,lowerbound = 0, upperbound = 200,scale = None):
 	arr = arr.astype('uint8')
 	# extract edges 
 	edges = cv2.Canny(arr,lowerbound, upperbound)
+	if scale:
+		edges = edges/scale
 	return edges
 
 # 'all-or-nothing' an image 
 def img_binarize(arr,threshold = .5, low = 0, high = 1):
 	minval,maxval = arr.min(),arr.max()
-	thresh_val = min_value + threshold(maxval - minval)
+	thresh_val = minval + threshold*(maxval - minval)
 	# copy for no destructive assignment
 	arr_copy = copy.copy(arr)
 	# is it black or white?
@@ -83,7 +92,15 @@ def img_binarize(arr,threshold = .5, low = 0, high = 1):
 def gaussian_blur(arr, window = (9,9),depth =0):
 	return cv2.GaussianBlur(arr, window, depth)
 
-
+def get_pooler(input_shape = (662, 659), pool_size = 2, strides = 4):
+	input_img = Input(shape = ((662, 659,1)))
+	pool = MaxPooling2D(pool_size=2,strides=4)(input_img)
+	model = Model(inputs = input_img, output = pool)
+	def pooler(img):
+		img_exp = np.expand_dims(np.expand_dims(img,axis = 0),axis = -1)
+		pooled = model.predict(img_exp)[0,:,:,0]
+		return pooled
+	return pooler
 
 
 
